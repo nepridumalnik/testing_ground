@@ -3,9 +3,10 @@
 #include <iostream>
 #include <thread>
 #include <string>
+#include <chrono>
 
 std::string user_input;
-std::string server_output;
+std::string network_output;
 std::mutex input_mutex;
 std::condition_variable input_cv;
 
@@ -13,9 +14,9 @@ void input_thread()
 {
     while (true)
     {
-        std::cout << "Enter text: ";
+        std::cout << "Введите текст:" << std::endl;
         std::getline(std::cin, user_input);
-        server_output = user_input;
+        network_output = user_input;
         input_cv.notify_one();
     }
 }
@@ -28,9 +29,27 @@ void network_thread()
 
     while (true)
     {
-        // Connect to the server and send the user input
-        socket.connect(endpoint);
-        boost::asio::write(socket, boost::asio::buffer(server_output));
+        {
+            std::unique_lock<std::mutex> lock(input_mutex);
+            input_cv.wait(lock);
+        }
+
+        do
+        {
+            try
+            {
+                // Подключение к серверу и отправка текста
+                socket.connect(endpoint);
+                boost::asio::write(socket, boost::asio::buffer(network_output));
+                break;
+            }
+            catch (const std::exception &e)
+            {
+                std::cout << "Не удалось отправить данные: " << e.what() << std::endl;
+                std::cout << "Переподключение произойдёт через 5 секунд..." << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+            }
+        } while (true);
     }
 }
 
